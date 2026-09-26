@@ -1,22 +1,46 @@
-# TiffinLoop Dropout Tool — PRD (production version)
+# TiffinLoop Dropout Tool PRD production version
 
 ## Problem
-A cook drops out with 0–2h notice (sick, emergency, no-show). Ops learns late, usually from a subscriber complaint, scrambles on WhatsApp for a backup, and subscribers hear nothing until food never arrives. Festival weeks spike leave. Lunch (12:30 PM) is the hard deadline.
+• A home cook drops out with very short notice due to fever, family work, or no show.
+• Ops hears late, often only when a hungry customer complains.
+• Then ops rushes on chat to find another cook or refund.
+• Customers hear nothing until food never comes. Lunch at 12:30 PM is the hard line.
 
-## Who it's for
-Ops execs resolving today's dropout (primary); subscriber receiving the message (secondary); leadership spotting repeat offenders (tertiary, separate view).
+## Who it is for
+• Ops team fixing todays food as main user.
+• Customers getting the message as second user.
+• Company heads seeing repeat dropouts as third user on a separate screen.
 
-## Success metrics
-- % affected subscribers notified before meal window (target 100%, lunch and dinner split).
-- Median minutes from dropout flag to all-notified (target <20 min at 10:30 AM test clock).
-- % affected covered by backup vs refunded, with cuisine/diet mismatches tracked.
-- 30-day dropout orders by city/cook trending down for repeat cooks.
+## How we measure success
+• Share of hurt customers told before food time with goal as all of them.
+• Lunch and dinner counted apart.
+• Minutes from cook is out to all told with goal under 20 minutes.
+• Share covered by backup cook vs refunded with food mismatches noted.
+• Repeat dropout counts by city and cook going down over 30 days.
 
-## What the prototype proved
-Against real messy seed (238 orders today; CK086 9 + CK087 9 out; CK090 hidden 6 active-in-sheet-but-out on WhatsApp; CK089 zero-impact; Tariq duplicate phone; 134 dropouts/30d: BLR 66/Pune 49/Mum 19): one-click affected list is fast; same-city + diet (Jain blocked from non-Jain) + capacity (max minus load minus promised) yields realistic backups; Lunch-first auto-assign routes Jain ORD07116 to CK020 not CK088; no-phone ORD07109 surfaces as needs-visit not sent; trace log audits all. Same-cuisine conflict is real (18 hurt vs CK088 8 free) — cross-cuisine/refund path required.
+## What the test version proved
+• One click shows all hurt people with meal, food type, and phone.
+• Backup search keeps same city.
+• Food rule is respected where Jain food needs Jain kitchen.
+• Daily limit is respected minus already promised plates.
+• Lunch gets assigned first.
+• A Jain dinner goes to a Jain kitchen with a food type warning.
+• A customer with no phone shows as needs visit not sent.
+• Every action is written in a log.
+• Same food backup is too small for both Bangalore dropouts together so other food or refund path is a must.
 
-## Deliberately cut (and why)
-Single-cook view (faster to build/test than merged two-cook; hint + shared capacity covers the overlap); simulated send (no SMS vendor in 4h); browser-local log (proves shape, server log later); static 30-day counts (no trends/alerts); no cook onboarding (sheet remains source of truth).
+## What we left out and why
+• One cook at a time because it is quicker to build and test.
+• Shared limit still blocks double booking.
+• Test messages only because there is no real message vendor in 4 hours.
+• Log saved in this browser because it shows the shape while shared log comes later.
+• Plain 30 day counts because there are no trend lines yet.
+• No cook joining screen because the sheet stays the source.
 
-## Open questions for engineering
-Jain hard-block vs warn-allow? Who approves cross-cuisine — ops or subscriber reply? Real WhatsApp sender identity + rate limits + Tariq dedupe rule? Server log schema + retention? Daily data refresh job from sheets? Delivery-partner handoff for late backups (Anil Joshi +30 min case)?
+## Open questions before real build
+• Jain rule as hard block or allow with warning.
+• Who says yes to other food swap, ops or customer reply.
+• Sender name and daily message limit and one phone two names rule.
+• Shared log design and how long to keep.
+• Daily sheet to app refresh job.
+• Handoff to delivery partners for late pickups.
