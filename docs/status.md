@@ -19,3 +19,8 @@
 
 ## 2026-09-25 — Trace log reference entries added
 - Seeded 2 reference entries from 2026-09-22 (real seed dropout orders): CK032 fully covered (ORD06752+ORD06816 → CK045), CK080 partial conflict (ORD06703 → CK074, ORD06786 refund). Badged "reference 22 Sept", dated yesterday so today's backup capacity untouched (CK088 still free 8 verified).
+
+## 2026-09-26 — Live + repo done, verified
+- Repo public: https://github.com/MANOHAR006/tiffinloop (5 commits, matches laptop).
+- Live: https://tiffinloop-one.vercel.app (root app/, preset Other). Fetched live HTML: header countdowns, 3 tabs, seed reference entries, cook flags, diet/capacity/notify/trace logic all present.
+- Left: chat export link + email with start/end times.
