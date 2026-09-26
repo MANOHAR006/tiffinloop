@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TiffinLoop — Cook Dropout Ops Tool</title>
+<style>
+  body { font-family: -apple-system, system-ui, Segoe UI, Roboto, sans-serif; margin: 0; background: #faf8f4; color: #222; }
+  header { background: #1d4ed8; color: #fff; padding: 14px 20px; }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 4px 0 0; font-size: 13px; opacity: .9; }
+  nav { display: flex; gap: 8px; padding: 12px 20px 0; }
+  nav button { padding: 8px 14px; border: 1px solid #1d4ed8; background: #fff; color: #1d4ed8; border-radius: 8px; cursor: pointer; font-size: 14px; }
+  nav button.active { background: #1d4ed8; color: #fff; }
+  main { padding: 16px 20px 40px; max-width: 1100px; }
+  .card { background: #fff; border: 1px solid #e5e0d5; border-radius: 12px; padding: 14px; margin: 12px 0; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+  label { font-size: 12px; color: #555; display: block; margin-bottom: 4px; }
+  select, input, button.send { font-size: 14px; padding: 8px; border-radius: 8px; border: 1px solid #ccc; }
+  button.primary { background: #16a34a; color: #fff; border: none; padding: 9px 14px; border-radius: 8px; cursor: pointer; }
+  button.warn { background: #f59e0b; color: #222; border: none; padding: 9px 14px; border-radius: 8px; cursor: pointer; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  th, td { border-bottom: 1px solid #eee; padding: 7px 6px; text-align: left; vertical-align: top; }
+  th { background: #f7f3ea; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 12px; }
+  .lunch { background: #fef3c7; } .dinner { background: #e0e7ff; }
+  .danger { background: #fee2e2; } .ok { background: #dcfce7; } .muted { background: #f1f5f9; }
+  .msg { background: #f8fafc; border: 1px dashed #94a3b8; border-radius: 8px; padding: 8px; font-size: 13px; white-space: pre-wrap; }
+  .bar { height: 18px; background: #1d4ed8; border-radius: 4px; }
+  small.dim { color: #666; }
+</style>
+</head>
+<body>
+<header>
+  <h1>TiffinLoop — Cook Dropout Ops Tool</h1>
+  <p>NOW: 23 Sept 2026, 10:30 AM &nbsp;•&nbsp; Lunch 12:30–2 PM — <b>2h 00m left</b> (urgent) &nbsp;•&nbsp; Dinner 7:30–9 PM — <b>9h 00m left</b> &nbsp;•&nbsp; Today's orders not yet delivered</p>
+</header>
+<nav>
+  <button id="tabOps" class="active">Ops Tool</button>
+  <button id="tabLead">Leadership View</button>
+  <button id="tabTrace">Trace Log</button>
+</nav>
+<main>
+  <section id="viewOps">
+    <div class="card">
+      <h3>1. Which cook dropped out?</h3>
+      <div class="row">
+        <div><label>Cook (sheet status shown; WhatsApp overrides flagged)</label><select id="cookSel" style="min-width:320px"></select></div>
+        <div><button class="primary" id="btnLoad">Show affected</button></div>
+      </div>
+      <p><small class="dim" id="cookHint"></small></p>
+    </div>
+    <div class="card"><h3>2. Affected subscribers today</h3><div id="affected"></div></div>
+    <div class="card"><h3>3. Backup options (same city only, diet-checked, capacity-checked)</h3><div id="backups"></div>
+      <p><button class="primary" id="btnAuto">Auto-assign backups (Lunch first)</button> <small class="dim">Uncovered orders stay unassigned → refund path.</small></p>
+      <div id="plan"></div>
+    </div>
+    <div class="card"><h3>4. Notify subscribers (simulated)</h3><div id="notify"></div>
+      <p><button class="warn" id="btnSend">Simulate Send All</button> <span id="sendStatus"></span></p>
+    </div>
+  </section>
+  <section id="viewLead" style="display:none">
+    <div class="card"><h3>Cook dropout frequency — last 30 days (<span id="range"></span>)</h3>
+      <p><small class="dim">Dropout = Cook No-Show / cook no show / cook_dropout / No Show / Cancelled - Cook Unavailable (all spellings merged). Today excluded (not delivered yet).</small></p>
+      <div id="byCity"></div>
+      <h4>By cook (top 20)</h4><div id="byCook"></div>
+    </div>
+  </section>
+  <section id="viewTrace" style="display:none">
+    <div class="card"><h3>Trace log — what happened per dropout event</h3><div id="trace"></div></div>
+  </section>
+  <div class="card"><small class="dim">Data quality handled in code (logic.js): city spellings merged (Bengaluru/Bangalore/BLR, Mumbai/MUM/Bombay, Pune variants), status spellings merged, DD/MM/YYYY + YYYY-MM-DD + DD-Mon-YYYY dates merged, duplicate phones flagged. Seed files never edited.</small></div>
+</main>
+<script src="logic.js"></script>
+<script>
+let currentCook = null, affected = [], planMap = {}, sentMap = {};
+const $ = id => document.getElementById(id);
+
+function switchTab(which) {
+  ["Ops","Lead","Trace"].forEach(t => $("tab"+t).classList.remove("active"));
+  $("tab"+which).classList.add("active");
+  $("viewOps").style.display = which==="Ops"?"":"none";
+  $("viewLead").style.display = which==="Lead"?"":"none";
+  $("viewTrace").style.display = which==="Trace"?"":"none";
+  if (which==="Trace") renderTrace();
+  if (which==="Lead") renderLead();
+}
+$("tabOps").onclick = () => switchTab("Ops");
+$("tabLead").onclick = () => switchTab("Lead");
+$("tabTrace").onclick = () => switchTab("Trace");
+
+function cookFlag(c) {
+  const id = c.cook_id;
+  if (id==="CK086") return " — ON LEAVE today (fever, sheet updated)";
+  if (id==="CK087") return " — ON LEAVE today (Mysore function, sheet updated)";
+  if (id==="CK090") return " — ⚠️ WhatsApp says OUT today, sheet still ACTIVE (hidden dropout)";
+  if (id==="CK089") return " — on leave but 0 orders today (zero-impact test)";
+  if (String(c.status).toLowerCase()!=="active") return ` — ${c.status} since ${c.status_since}`;
+  return " — active";
+}
+
+async function init() {
+  await loadData();
+  const sel = $("cookSel");
+  const sorted = DB.cooks.slice().sort((a,b)=>a.cook_id.localeCompare(b.cook_id));
+  // pin interesting cooks to top
+  const pin = ["CK086","CK087","CK090","CK088","CK089"];
+  pin.reverse().forEach(id => { const c = cookById[id]; if (c) sorted.unshift(c); });
+  const seen = new Set(); sel.innerHTML = "";
+  for (const c of sorted) {
+    if (seen.has(c.cook_id)) continue; seen.add(c.cook_id);
+    const o = document.createElement("option");
+    o.value = c.cook_id;
+    o.textContent = `${c.cook_id} — ${c.cook_name} (${normCity(c.city)}, ${c.cuisine_specialty})${cookFlag(c)}`;
+    sel.appendChild(o);
+  }
+  sel.value = "CK087";
+  $("btnLoad").onclick = loadCook;
+  $("btnAuto").onclick = doAuto;
+  $("btnSend").onclick = doSend;
+  seedReferenceEntries();
+  loadCook();
+}
+
+function seedReferenceEntries() {
+  if (readLog().length) return;
+  // Reference entries from yesterday (2026-09-22) using real dropout orders from the seed.
+  // Dated yesterday so they never consume today's backup capacity (capacity counts TODAY only).
+  writeLog({ at: "2026-09-22T13:05:00", now: "2026-09-22T12:30:00", cook: "CK032", cookName: "Shweta Bose",
+    affected: ["ORD06752", "ORD06816"], assignments: { ORD06752: "CK045", ORD06816: "CK045" },
+    uncovered: [], notified: ["ORD06752", "ORD06816"], needsCall: [], ref: true });
+  writeLog({ at: "2026-09-22T19:50:00", now: "2026-09-22T18:30:00", cook: "CK080", cookName: "Imran Agarwal",
+    affected: ["ORD06703", "ORD06786"], assignments: { ORD06703: "CK074" },
+    uncovered: ["ORD06786"], notified: ["ORD06703", "ORD06786"], needsCall: [], ref: true });
+}
+
+function loadCook() {
+  currentCook = cookById[$("cookSel").value];
+  planMap = {}; sentMap = {};
+  $("sendStatus").textContent = "";
+  const list = ordersForCookToday(currentCook.cook_id);
+  affected = list.map(o => ({ ...o, meal_type: normMeal(o.meal_type) }));
+  const hint = $("cookHint");
+  if (currentCook.cook_id==="CK090") hint.textContent = "Sunita Kulkarni messaged at 7:41am that she cannot cook today, but Priya has not updated the sheet yet. Treat this as a real dropout — the tool lets you act even when the sheet says active.";
+  else if (currentCook.cook_id==="CK089") hint.textContent = "Divya Menon is on leave since 19 Sept but has no orders today — expect zero affected.";
+  else if (currentCook.cook_id==="CK086" || currentCook.cook_id==="CK087") hint.textContent = `${currentCook.cook_name}: ${currentCook.status}${currentCook.status_since ? " since "+currentCook.status_since : ""}, city ${normCity(currentCook.city)}, capacity ${currentCook.max_daily_orders}/day. NOTE: BOTH CK086 and CK087 are out today (18 orders total). Only one same-cuisine backup exists in Bengaluru (CK088, 8 free) — same-cuisine cover will conflict; cross-cuisine or refund needed.`;
+  else hint.textContent = `${currentCook.cook_name}: ${currentCook.status}${currentCook.status_since ? " since "+currentCook.status_since : ""}, city ${normCity(currentCook.city)}, capacity ${currentCook.max_daily_orders}/day.`;
+  renderAffected(); renderBackups(); renderPlan(); renderNotify();
+}
+
+function renderAffected() {
+  const el = $("affected");
+  if (!affected.length) { el.innerHTML = `<p><span class="badge ok">No affected orders today</span> — nothing to resolve for this cook.</p>`; return; }
+  const dups = duplicatePhonesToday(affected);
+  let h = `<p><span class="badge danger">${affected.length} affected</span> <small class="dim">Lunch = urgent — leaves 12:30 PM (2h 00m left). Dinner leaves 7:30 PM (9h 00m left).</small></p><table><tr><th>Order</th><th>Subscriber</th><th>Meal</th><th>Plan / Diet</th><th>Phone</th></tr>`;
+  for (const o of affected) {
+    const s = subById[o.subscriber_id]||{};
+    const dup = s.phone && dups.has(phoneKey(s.phone));
+    h += `<tr><td>${o.order_id}<br><small class="dim">${o.subscriber_id} • Rs.${o.amount_inr}</small></td><td>${s.subscriber_name||"?"}${dup?' <span class="badge danger">same phone ×2</span>':""}</td><td><span class="badge ${o.meal_type==="Lunch"?"lunch":"dinner"}">${o.meal_type}</span></td><td>${s.meal_plan||""}<br><small class="dim">${s.diet||""} • ${s.city||""}</small></td><td>${s.phone||"<i>no phone</i>"}</td></tr>`;
+  }
+  el.innerHTML = h + "</table>";
+}
+
+function renderBackups() {
+  const el = $("backups");
+  const diets = [...new Set(affected.map(o => (subById[o.subscriber_id]||{}).diet).filter(Boolean))];
+  let h = `<p><small class="dim">Dropout cook: ${currentCook.cook_name} (${normCity(currentCook.city)}, ${currentCook.cuisine_specialty}). Affected diets: ${diets.join(", ")||"—"}.</small></p>`;
+  // show per-diet candidates for transparency
+  const shown = new Set(); let rows = "";
+  for (const d of diets.length?diets:[null]) {
+    for (const b of backupCandidates(currentCook.cook_id, d)) {
+      if (shown.has(b.cook.cook_id)) continue; shown.add(b.cook.cook_id);
+      rows += `<tr><td>${b.cook.cook_id}<br><small class="dim">${b.cook.cook_name}</small></td><td>${b.cook.cuisine_specialty}${b.cuisineMatch?"":' <span class="badge muted">cuisine differs</span>'}<br><small class="dim">${b.cook.serves}</small></td><td>${b.load}/${b.max} (free ${b.free})</td><td>${b.dietOk?'<span class="badge ok">diet ok</span>':'<span class="badge danger">diet clash</span>'}</td></tr>`;
+    }
+  }
+  el.innerHTML = h + (rows ? `<table><tr><th>Backup</th><th>Cuisine / serves</th><th>Today load</th><th>Diet</th></tr>${rows}</table>` : `<p><span class="badge danger">No backup with free capacity in ${normCity(currentCook.city)}.</span> All affected go to refund path.</p>`);
+}
+
+function renderPlan() {
+  const el = $("plan");
+  if (!affected.length) { el.innerHTML=""; return; }
+  const assigned = Object.values(planMap).filter(Boolean).length;
+  const uncovered = affected.length - assigned;
+  let h = `<p><span class="badge ${uncovered?"danger":"ok"}">${assigned} covered • ${uncovered} uncovered</span>${uncovered?` — uncovered will be refunded + called, and the conflict is logged.`:""}</p>`;
+  h += `<table><tr><th>Order</th><th>Backup</th><th>Note</th></tr>`;
+  for (const o of affected) {
+    const b = planMap[o.order_id];
+    const opts = backupCandidates(currentCook.cook_id, (subById[o.subscriber_id]||{}).diet)
+      .map(x => `<option value="${x.cook.cook_id}" ${b===x.cook.cook_id?"selected":""}>${x.cook.cook_id} (free ${x.free}${x.cuisineMatch?"":", cuisine differs"})</option>`).join("");
+    h += `<tr><td>${o.order_id} <small class="dim">${o.meal_type}</small></td><td><select data-ord="${o.order_id}"><option value="">— refund —</option>${opts}</select></td><td><small class="dim">${b?"covered":"refund path"}</small></td></tr>`;
+  }
+  el.innerHTML = h + "</table>";
+  el.querySelectorAll("select[data-ord]").forEach(s => s.onchange = e => {
+    planMap[e.target.dataset.ord] = e.target.value || null;
+    renderPlan(); renderNotify();
+  });
+}
+
+function doAuto() {
+  const auto = autoAssign(affected, currentCook.cook_id);
+  planMap = {}; auto.forEach(a => planMap[a.order_id] = a.backup);
+  const uncovered = auto.filter(a=>!a.backup).length;
+  if (uncovered) alert(`${uncovered} order(s) have no backup with free capacity + diet match. They stay on refund path — this conflict is shown and logged.`);
+  renderPlan(); renderNotify();
+}
+
+function renderNotify() {
+  const el = $("notify");
+  if (!affected.length) { el.innerHTML=""; return; }
+  const dups = duplicatePhonesToday(affected);
+  let h = "";
+  for (const o of affected) {
+    const m = buildMessage(o, currentCook, planMap[o.order_id]);
+    const st = sentMap[o.order_id];
+    const badge = st === "sent" ? '<span class="badge ok">sent</span>' : st === "needs-call" ? '<span class="badge danger">no phone — needs visit/call</span>' : "";
+    h += `<p><b>${o.order_id}</b> → ${m.to} ${badge}<div class="msg">${m.text}</div></p>`;
+  }
+  // collapse duplicate-phone warning
+  const phones = {};
+  affected.forEach(o => { const s=subById[o.subscriber_id]||{}; const k=phoneKey(s.phone); if(k){(phones[k]=phones[k]||[]).push(o.order_id);} });
+  const dupGroups = Object.entries(phones).filter(([k,v])=>v.length>1);
+  if (dupGroups.length) h = `<p><span class="badge danger">Duplicate phone: ${dupGroups.map(([k,v])=>v.join(" + ")+" share one number — send once, not twice").join("; ")}</span> (explains Tariq's complaint).</p>` + h;
+  el.innerHTML = h;
+}
+
+function doSend() {
+  let sent = 0, needCall = 0;
+  affected.forEach(o => {
+    const sub = subById[o.subscriber_id] || {};
+    if (String(sub.phone || "").trim()) { sentMap[o.order_id] = "sent"; sent += 1; }
+    else { sentMap[o.order_id] = "needs-call"; needCall += 1; }
+  });
+  $("sendStatus").innerHTML = `<span class="badge ${needCall ? "danger" : "ok"}">${sent} sent${needCall ? ` • ${needCall} no phone — needs physical visit/call (e.g. ORD07109)` : ""} (before mealtime)</span>`;
+  writeLog({ at: new Date().toISOString(), now: NOW_ISO, cook: currentCook.cook_id, cookName: currentCook.cook_name,
+    affected: affected.map(o=>o.order_id), assignments: {...planMap},
+    uncovered: affected.filter(o=>!planMap[o.order_id]).map(o=>o.order_id),
+    notified: affected.filter(o=>sentMap[o.order_id]==="sent").map(o=>o.order_id),
+    needsCall: affected.filter(o=>sentMap[o.order_id]==="needs-call").map(o=>o.order_id) });
+  renderNotify();
+}
+
+function renderLead() {
+  const s = dropoutStats();
+  $("range").textContent = `${s.start} to ${s.end} (30 days)`;
+  const max = Math.max(...Object.values(s.byCity), 1);
+  $("byCity").innerHTML = Object.entries(s.byCity).map(([c,n]) =>
+    `<p>${c}: <b>${n}</b> <div class="bar" style="width:${Math.round(n/max*100)}%"></div></p>`).join("") +
+    `<p><small class="dim">Total dropout orders: ${s.total}</small></p>`;
+  $("byCook").innerHTML = `<table><tr><th>Cook</th><th>City</th><th>Dropouts</th></tr>` +
+    s.byCook.slice(0,20).map(r => `<tr><td>${r.id} <small class="dim">${r.cook?r.cook.cook_name:"(left sheet)"}</small></td><td>${r.cook?normCity(r.cook.city):"—"}</td><td><b>${r.n}</b></td></tr>`).join("") + "</table>";
+}
+
+function renderTrace() {
+  const l = readLog();
+  $("trace").innerHTML = l.length ? l.map(e => `<p>${e.ref ? '<span class="badge muted">reference 22 Sept</span> ' : ""}<b>${e.at}</b> — ${e.cook} (${e.cookName}): ${e.affected.length} affected, ${e.affected.length-(e.uncovered||[]).length} covered, ${(e.uncovered||[]).length} refund. Notified ${(e.notified||[]).length}${(e.needsCall||[]).length ? `, <span class="badge danger">needs call: ${e.needsCall.join(", ")}</span>` : ""}. ${e.uncovered&&e.uncovered.length?`<span class="badge danger">conflict: ${e.uncovered.join(", ")}</span>`:'<span class="badge ok">all covered/notified</span>'}</p>`).join("") : "<p><small class='dim'>No events yet. Resolve a dropout in the Ops tab and press Send All.</small></p>";
+}
+
+init();
+</script>
+</body>
+</html>
